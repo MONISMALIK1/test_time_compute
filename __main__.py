@@ -54,10 +54,11 @@ def _solve_one(args, model: str):
         return solve_adaptive(
             args.question, probe_n=args.probe_n, n_max=args.n_max,
             strategy=args.strategy, verifier=verifier, model=model,
+            temperature=args.temperature,
         )
     return solve(
         args.question, n=args.n, strategy=args.strategy,
-        verifier=verifier, model=model,
+        verifier=verifier, model=model, temperature=args.temperature,
     )
 
 
@@ -76,10 +77,11 @@ def _bench(args, model: str) -> int:
         if args.adaptive:
             ttc = solve_adaptive(prob.question, probe_n=args.probe_n, n_max=args.n_max,
                                  strategy=args.strategy, verifier=make_verifier(verifier_name),
-                                 model=model)
+                                 model=model, temperature=args.temperature)
         else:
             ttc = solve(prob.question, n=args.n, strategy=args.strategy,
-                        verifier=make_verifier(verifier_name), model=model)
+                        verifier=make_verifier(verifier_name), model=model,
+                        temperature=args.temperature)
         secs = time.monotonic() - t0
         total_secs += secs
         total_samples += ttc.n
@@ -123,6 +125,8 @@ def main() -> int:
     p.add_argument("--verifier", choices=sorted(VERIFIERS), default="majority",
                    help="Scorer: 'majority' (no network) or 'llm' (default: majority).")
     p.add_argument("--model", default=None, help=f"Model slug (default: {DEFAULT_MODEL}).")
+    p.add_argument("--temperature", type=float, default=0.8,
+                   help="Sampling temperature for candidate diversity (default: 0.8).")
     p.add_argument("--baseline", action="store_true",
                    help="Single greedy sample — the n=1 comparison.")
     p.add_argument("--show-candidates", action="store_true",
