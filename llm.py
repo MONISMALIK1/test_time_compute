@@ -19,7 +19,7 @@ import re
 import time
 import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 DEFAULT_MODEL = os.environ.get("TTC_MODEL", "openai/gpt-oss-120b:free")
 _API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
@@ -103,8 +103,12 @@ def sample(
     """Draw ``n`` independent completions for ``prompt``, concurrently.
 
     Temperature defaults to 0.8 — diversity is the whole point of sampling many.
-    Results preserve call order. Used to generate the candidate pool the
-    verifier and aggregation strategies then choose among.
+    Results preserve call order.
+
+    Resilient to individual failures: a completion that errors out (after its own
+    retries) is dropped rather than sinking the whole batch — losing one of N
+    samples just makes the vote slightly smaller. Only when *every* sample fails
+    do we raise, since then there's nothing to choose among.
     """
     if n <= 0:
         return []
@@ -116,5 +120,18 @@ def sample(
     if n == 1:
         return [_one(0)]
 
+    results: list[tuple[int, str]] = []
+    last_error: Exception | None = None
     with ThreadPoolExecutor(max_workers=min(n, _MAX_WORKERS)) as pool:
-        return list(pool.map(_one, range(n)))
+        futures = {pool.submit(_one, i): i for i in range(n)}
+        for fut in as_completed(futures):
+            try:
+                results.append((futures[fut], fut.result()))
+            except Exception as exc:  # noqa: BLE001 — one bad sample shouldn't kill the batch
+                last_error = exc
+
+    if not results:
+        raise RuntimeError(f"all {n} samples failed; last error: {last_error}")
+
+    results.sort()  # restore call order
+    return [text for _, text in results]
