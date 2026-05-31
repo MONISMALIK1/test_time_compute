@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "test_time_compute"
+version = "0.1.0"
+description = "Test-Time Compute (Snell et al., 2024): verifier-guided sampling and compute-optimal allocation, from scratch"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = []   # zero third-party deps — pure stdlib + OpenRouter HTTP
+
+[project.scripts]
+test_time_compute = "test_time_compute.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["test_time_compute*"]
+
+[tool.setuptools.package-data]
+test_time_compute = ["py.typed"]
