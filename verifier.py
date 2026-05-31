@@ -22,8 +22,12 @@ working stand-in — see the README's honest-caveat section.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from .aggregate import Candidate
 from .prompts import VERIFIER_PROMPT, parse_score
+
+_MAX_WORKERS = 8
 
 
 class Verifier:
@@ -65,14 +69,26 @@ class LLMVerifier(Verifier):
         self._model = model
         self._temperature = temperature
 
+    def _judge(self, question: str, candidate: Candidate) -> float:
+        prompt = VERIFIER_PROMPT.format(question=question, solution=candidate.text)
+        reply = self._chat(prompt, model=self._model, temperature=self._temperature)
+        return parse_score(reply)
+
     def score(self, question: str, candidates: list[Candidate]) -> list[Candidate]:
+        # Answerless candidates score 0 without a call — they can't be the pick.
+        to_judge = [c for c in candidates if c.answer is not None]
         for c in candidates:
             if c.answer is None:
                 c.score = 0.0
-                continue
-            prompt = VERIFIER_PROMPT.format(question=question, solution=c.text)
-            reply = self._chat(prompt, model=self._model, temperature=self._temperature)
-            c.score = parse_score(reply)
+        if not to_judge:
+            return candidates
+
+        # The judge is I/O-bound, so grade candidates concurrently. pool.map keeps
+        # output aligned with input order, so scores land on the right candidates.
+        with ThreadPoolExecutor(max_workers=min(len(to_judge), _MAX_WORKERS)) as pool:
+            scores = pool.map(lambda c: self._judge(question, c), to_judge)
+        for c, s in zip(to_judge, scores):
+            c.score = s
         return candidates
 
 

@@ -44,15 +44,27 @@ class MajorityVerifierTests(unittest.TestCase):
 
 class LLMVerifierTests(unittest.TestCase):
     def test_uses_chat_reply_as_score(self):
-        replies = iter(["SCORE: 0.9", "SCORE: 0.2"])
-
+        # Keyed on the solution text, not call order — scoring runs concurrently,
+        # so an iterator of replies would be racy.
         def fake_chat(prompt, **kwargs):
-            return next(replies)
+            return "SCORE: 0.9" if "good sol" in prompt else "SCORE: 0.2"
 
         c = [Candidate("good sol", "42"), Candidate("bad sol", "7")]
         LLMVerifier(chat_fn=fake_chat).score("q", c)
         self.assertAlmostEqual(c[0].score, 0.9)
         self.assertAlmostEqual(c[1].score, 0.2)
+
+    def test_scores_align_with_candidates_under_concurrency(self):
+        # Many candidates, each scored by its own index — proves pool.map keeps
+        # scores aligned with the right candidate regardless of completion order.
+        def fake_chat(prompt, **kwargs):
+            idx = prompt.split("IDX=")[1].split()[0]
+            return f"SCORE: 0.{idx}"
+
+        c = [Candidate(f"sol IDX={i} more", str(i)) for i in range(1, 8)]
+        LLMVerifier(chat_fn=fake_chat).score("q", c)
+        self.assertEqual([round(x.score, 1) for x in c],
+                         [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7])
 
     def test_question_and_solution_reach_the_judge(self):
         captured = {}
