@@ -11,6 +11,15 @@ from unittest.mock import patch
 from test_time_compute import llm
 
 
+class LocalEndpointTests(unittest.TestCase):
+    def test_detects_local_hosts(self):
+        self.assertTrue(llm._is_local("http://localhost:11434/v1/chat/completions"))
+        self.assertTrue(llm._is_local("http://127.0.0.1:1234/v1/chat/completions"))
+
+    def test_remote_is_not_local(self):
+        self.assertFalse(llm._is_local("https://openrouter.ai/api/v1/chat/completions"))
+
+
 class SampleTests(unittest.TestCase):
     def test_zero_returns_empty(self):
         self.assertEqual(llm.sample("p", 0), [])
